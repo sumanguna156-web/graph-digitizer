@@ -37,30 +37,34 @@
   .bar{height:10px;border:1.5px solid var(--ink);margin-top:12px;background:#fff;display:none}
   .bar i{display:block;height:100%;background:repeating-linear-gradient(45deg,var(--accent),var(--accent) 6px,#12987e 6px,#12987e 12px);width:0%;transition:width .3s}
   .countline{font-family:var(--mono);font-size:12px;margin-top:8px;color:var(--ink)}
-  .gwrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(500px,1fr));gap:22px}
-  @media(max-width:560px){.gwrap{grid-template-columns:1fr}}
+  .gwrap{display:flex;flex-direction:column;gap:26px;max-width:900px;margin:0 auto}
+
   .gcard{background:#fff;border:1.5px solid var(--ink);box-shadow:5px 5px 0 rgba(22,50,79,.12)}
   .gtop{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1.5px solid var(--ink);flex-wrap:wrap}
   .gtop .tag{font-family:var(--mono);font-size:10.5px;background:var(--ink);color:#fff;padding:3px 7px}
   .gtop input[type=text]{flex:1;min-width:160px;font-weight:650;font-size:13.5px;border:none;border-bottom:1.5px dashed var(--line);padding:4px 2px;color:var(--ink);background:transparent}
   .gtop input[type=text]:focus{outline:none;border-bottom-color:var(--accent)}
   .gbody{padding:10px}
-  .axes{display:flex;gap:8px;padding:0 12px 8px;flex-wrap:wrap}
+  .axes{display:flex;gap:10px;padding:10px 14px;flex-wrap:wrap;background:#fbfcfe}
   .axes label{font-family:var(--mono);font-size:10px;color:var(--ink-soft);display:flex;flex-direction:column;gap:2px;flex:1;min-width:140px}
   .axes input{font-family:var(--mono);font-size:11px;border:1px solid var(--line);padding:4px 6px;color:var(--ink)}
   .legend{display:flex;gap:10px;flex-wrap:wrap;padding:6px 12px 12px}
   .legend .chip{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px}
   .legend input[type=color]{width:22px;height:22px;border:1px solid var(--ink);padding:0;background:none;cursor:pointer}
   .gact{display:flex;gap:8px;padding:0 12px 14px;flex-wrap:wrap}
-  .cctl{border-top:1px dashed var(--line);padding:8px 12px;display:flex;flex-direction:column;gap:6px}
-  .crow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:11px}
+  .cctl{border-top:1px solid var(--grid);padding:10px 14px;display:flex;flex-direction:column;gap:8px;background:#fbfcfe}
+  .cctl.collapsed{display:none}
+  .settings.collapsed{display:none}
+  .panel-toggle{font-family:var(--mono);font-size:11px;color:var(--accent-ink);cursor:pointer;padding:8px 14px;border-top:1px solid var(--grid);user-select:none;display:flex;align-items:center;gap:6px}
+  .panel-toggle:hover{background:#f2faf7}
+  .crow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;padding:5px 0;border-bottom:1px dashed var(--grid)}
   .crow input[type=text]{border:none;border-bottom:1px dashed var(--line);font-family:var(--mono);font-size:11px;width:96px;background:transparent;color:var(--ink)}
   .crow input[type=range]{width:70px}
   .crow label{display:flex;align-items:center;gap:3px;color:var(--ink-soft)}
   .crow .del{border:1px solid var(--signal);color:var(--signal);background:#fff;padding:2px 6px;font-size:10px;cursor:pointer}
   .editing svg.plot polyline{cursor:move}
   .tips{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);padding:0 12px 8px;line-height:1.5}
-  .toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 12px;border-bottom:1px dashed var(--line);font-family:var(--mono);font-size:11px}
+  .toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--grid);font-family:var(--mono);font-size:11px;background:#fbfcfe}
   .toolbar button{padding:4px 8px;font-size:10.5px}
   .toolbar button.on{background:var(--accent);color:#fff;border-color:var(--accent-ink)}
   .readout{margin-left:auto;color:var(--accent-ink);font-weight:600;min-width:150px;text-align:right}
@@ -141,7 +145,7 @@
 let pdfFile = null, pdfName = '', accessCode = '';
 let authRequired = false;
 fetch('/api/health').then(r=>r.json()).then(d=>{authRequired = !!d.auth;}).catch(()=>{});
-const state = { graphs: [], edit: {}, hist: {}, orig: {}, view: {}, ghost: {}, table: {}, mode: {}, uid: null };
+const state = { graphs: [], edit: {}, hist: {}, orig: {}, view: {}, ghost: {}, table: {}, mode: {}, panel: {}, uid: null };
 const $ = id => document.getElementById(id);
 
 /* ================= upload ================= */
@@ -314,8 +318,6 @@ function card(g, gi){
     <div class="gtop"><span class="tag">${g.id} · p${g.page}</span>
       <input type="text" value="${escq(g.title)}" data-f="title" aria-label="Graph title"></div>
     <div class="toolbar">
-      <button data-zoomin>+</button><button data-zoomout>−</button><button data-zoomreset>reset view</button>
-      <button data-pan class="${state.mode[gi]==='pan'?'on':''}">pan</button>
       ${g.crop ? `<span class="ghostrow">ghost<input type="range" min="0" max="1" step="0.05" value="${state.ghost[gi] ?? 0}" data-ghost style="width:70px"></span>` : ''}
       <button data-table class="${state.table[gi]?'on':''}">table</button>
       <button data-csv>CSV</button><button data-xlsx>XLSX</button>
@@ -323,6 +325,8 @@ function card(g, gi){
     </div>
     <div class="gbody">${svgFor(g, gi, !!state.edit[gi])}</div>
     <div class="hint">${state.edit[gi] ? 'drag points to edit · ' : ''}axes: ${g.x_axis.scale} / ${g.y_axis.scale}</div>
+    <div class="panel-toggle" data-panel>${state.panel[gi] ? '▾ hide axis & curve settings' : '▸ axis & curve settings'}</div>
+    <div class="settings ${state.panel[gi] ? '' : 'collapsed'}">
     <div class="axes">
       <label>x-axis label<input type="text" value="${escq(g.x_axis.label)}" data-f="xlabel"></label>
       <label>y-axis label<input type="text" value="${escq(g.y_axis.label)}" data-f="ylabel"></label>
@@ -341,8 +345,8 @@ function card(g, gi){
         <button data-extl="${ci}" title="extend to left axis using the slope of the first points">←ext</button>
         <button data-extr="${ci}" title="extend to right axis">ext→</button>
         <button data-split="${ci}" class="${state.mode[gi]==='split:'+ci?'on':''}" title="then click a point">split</button>
-        <button data-merge="${ci}" title="merge with the next curve of the same colour family">merge↓</button>
       </div>`).join('')}
+    </div>
     </div>
     ${state.table[gi] ? pointTable(g, gi) : ''}
     ${state.edit[gi] ? `<div class="tips">drag a point to move it · drag the line to shift the whole curve · double-click the line to add a point · alt-click a point to delete it</div>` : ''}
@@ -373,15 +377,10 @@ function card(g, gi){
     if (!confirm('Reset this graph to the originally extracted data?')) return;
     snapshot(gi); state.graphs[gi] = JSON.parse(JSON.stringify(state.orig[gi])); renderAll();
   };
+  const pt = el.querySelector('[data-panel]');
+  if (pt) pt.onclick = () => { state.panel[gi] = !state.panel[gi]; renderAll(); };
   el.querySelector('[data-edit]').onclick = () => { state.edit[gi] = !state.edit[gi]; renderAll(); };
   // toolbar
-  const zoom = f => { const v = state.view[gi] || {x:0,y:0,w:PW,h:PH};
-    const cx0 = v.x + v.w/2, cy0 = v.y + v.h/2, nw = v.w*f, nh = v.h*f;
-    state.view[gi] = { x: cx0-nw/2, y: cy0-nh/2, w: nw, h: nh }; redraw(el,g,gi); };
-  el.querySelector('[data-zoomin]').onclick = () => zoom(1/1.3);
-  el.querySelector('[data-zoomout]').onclick = () => zoom(1.3);
-  el.querySelector('[data-zoomreset]').onclick = () => { state.view[gi] = null; redraw(el,g,gi); };
-  el.querySelector('[data-pan]').onclick = () => { state.mode[gi] = state.mode[gi]==='pan' ? null : 'pan'; renderAll(); };
   const gh = el.querySelector('[data-ghost]');
   if (gh) gh.oninput = () => { state.ghost[gi] = parseFloat(gh.value); redraw(el,g,gi); };
   el.querySelector('[data-table]').onclick = () => { state.table[gi] = !state.table[gi]; renderAll(); };
@@ -390,7 +389,6 @@ function card(g, gi){
   // curve ops
   el.querySelectorAll('[data-extl]').forEach(b => b.onclick = () => extend(g, gi, +b.dataset.extl, 'left'));
   el.querySelectorAll('[data-extr]').forEach(b => b.onclick = () => extend(g, gi, +b.dataset.extr, 'right'));
-  el.querySelectorAll('[data-merge]').forEach(b => b.onclick = () => mergeCurves(g, gi, +b.dataset.merge));
   el.querySelectorAll('[data-split]').forEach(b => b.onclick = () => {
     const ci = +b.dataset.split;
     state.mode[gi] = state.mode[gi] === 'split:'+ci ? null : 'split:'+ci;
@@ -426,7 +424,7 @@ function redraw(el, g, gi){
 
 function svgFor(g, gi, edit, forExport){
   const sx = mkScale(g.x_axis, M.l, PW-M.r), sy = mkScale(g.y_axis, PH-M.b, M.t);
-  const v = (!forExport && state.view[gi]) || {x:0,y:0,w:PW,h:PH};
+  const v = {x:0,y:0,w:PW,h:PH};
   let s = `<svg class="plot" data-g="${gi}" viewBox="${v.x} ${v.y} ${v.w} ${v.h}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" font-family="Helvetica,Arial,sans-serif">`;
   s += `<rect x="0" y="0" width="${PW}" height="${PH}" fill="#ffffff"/>`;
   const go = !forExport ? (state.ghost[gi] ?? 0) : 0;
@@ -493,18 +491,6 @@ function extend(g, gi, ci, dir){
   }
   renderAll();
 }
-function mergeCurves(g, gi, ci){
-  if (ci >= g.curves.length - 1) { alert('No curve below to merge with.'); return; }
-  const a = g.curves[ci], b = g.curves[ci+1];
-  if (!confirm(`Merge "${b.label}" into "${a.label}"?`)) return;
-  snapshot(gi);
-  const pts = a.x.map((x,i)=>[x,a.y[i]]).concat(b.x.map((x,i)=>[x,b.y[i]])).sort((p,q)=>p[0]-q[0]);
-  const dedup = pts.filter((p,i)=> i===0 || Math.abs(p[0]-pts[i-1][0]) > 1e-9);
-  a.x = dedup.map(p=>p[0]); a.y = dedup.map(p=>p[1]);
-  a.confidence = Math.min(a.confidence ?? 1, b.confidence ?? 1);
-  g.curves.splice(ci+1, 1);
-  renderAll();
-}
 function splitCurve(g, gi, ci, pi){
   const c = g.curves[ci];
   if (pi <= 0 || pi >= c.x.length-1) { alert('Pick an interior point to split at.'); return; }
@@ -555,33 +541,6 @@ function attachDrag(el, g, gi){
     if (p.x < M.l || p.x > PW-M.r || p.y < M.t || p.y > PH-M.b) { readout.textContent = '—'; return; }
     readout.textContent = `x ${fmt(sxr.from(p.x))}   y ${fmt(syr.from(p.y))}`;
   });
-  // wheel zoom around cursor
-  svg.addEventListener('wheel', ev => {
-    ev.preventDefault();
-    const v = state.view[gi] || {x:0,y:0,w:PW,h:PH};
-    const p = toPt(ev);
-    const f = ev.deltaY < 0 ? 1/1.15 : 1.15;
-    state.view[gi] = { x: p.x - (p.x - v.x)*f, y: p.y - (p.y - v.y)*f, w: v.w*f, h: v.h*f };
-    redraw(el, g, gi);
-  }, { passive: false });
-  // pan mode
-  if (state.mode[gi] === 'pan'){
-    let start = null;
-    svg.style.cursor = 'grab';
-    svg.addEventListener('pointerdown', ev => {
-      const v = state.view[gi] || {x:0,y:0,w:PW,h:PH};
-      start = { p: toPt(ev), v: {...v} }; svg.setPointerCapture(ev.pointerId); svg.style.cursor='grabbing';
-    });
-    svg.addEventListener('pointermove', ev => {
-      if (!start) return;
-      const p = toPt(ev);
-      state.view[gi] = { ...start.v, x: start.v.x - (p.x - start.p.x), y: start.v.y - (p.y - start.p.y) };
-      svg.setAttribute('viewBox', `${state.view[gi].x} ${state.view[gi].y} ${state.view[gi].w} ${state.view[gi].h}`);
-    });
-    const end = () => { start = null; svg.style.cursor='grab'; };
-    svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
-    return;
-  }
   // split mode: click a point to split there
   if ((state.mode[gi]||'').startsWith('split:')){
     const ci = +state.mode[gi].split(':')[1];
