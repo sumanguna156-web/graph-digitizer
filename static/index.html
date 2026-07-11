@@ -37,9 +37,30 @@
   .bar{height:10px;border:1.5px solid var(--ink);margin-top:12px;background:#fff;display:none}
   .bar i{display:block;height:100%;background:repeating-linear-gradient(45deg,var(--accent),var(--accent) 6px,#12987e 6px,#12987e 12px);width:0%;transition:width .3s}
   .countline{font-family:var(--mono);font-size:12px;margin-top:8px;color:var(--ink)}
-  .gwrap{display:flex;flex-direction:column;gap:26px;max-width:900px;margin:0 auto}
+  .gwrap{display:flex;flex-direction:column;gap:28px;max-width:1120px;margin:0 auto}
 
-  .gcard{background:#fff;border:1.5px solid var(--ink);box-shadow:5px 5px 0 rgba(22,50,79,.12)}
+  .gcard{background:#fff;border:1.5px solid var(--ink);box-shadow:6px 6px 0 rgba(22,50,79,.10);overflow:hidden}
+  .gmain{display:flex;gap:0;align-items:stretch}
+  @media(max-width:820px){.gmain{flex-direction:column}}
+  .gleft{flex:1 1 60%;min-width:0;padding:14px 16px;display:flex;flex-direction:column}
+  .grail{flex:0 0 300px;border-left:1.5px solid var(--grid);background:#fafcfe;padding:14px;display:flex;flex-direction:column;gap:12px;max-height:560px;overflow-y:auto}
+  @media(max-width:820px){.grail{flex-basis:auto;border-left:none;border-top:1.5px solid var(--grid)}}
+  .railsec{display:flex;flex-direction:column;gap:7px}
+  .railsec h4{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);border-bottom:1px solid var(--grid);padding-bottom:4px}
+  .railrow{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px}
+  .railrow input[type=text]{flex:1;min-width:0;border:1px solid var(--line);padding:4px 6px;font-family:var(--mono);font-size:11px;background:#fff;color:var(--ink)}
+  .railrow input[type=text]:focus{outline:none;border-color:var(--accent)}
+  .curveitem{border:1px solid var(--grid);border-radius:3px;padding:7px;display:flex;flex-direction:column;gap:6px;background:#fff}
+  .curveitem .top{display:flex;align-items:center;gap:6px}
+  .curveitem .top input[type=color]{width:22px;height:22px;border:1px solid var(--ink);padding:0;cursor:pointer;flex:0 0 auto}
+  .curveitem .top input[type=text]{flex:1;min-width:0;border:none;border-bottom:1px dashed var(--line);font-family:var(--mono);font-size:11px;background:transparent;color:var(--ink)}
+  .curveitem .opts{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:10px;color:var(--ink-soft)}
+  .curveitem .opts label{display:flex;align-items:center;gap:3px}
+  .curveitem .opts input[type=range]{width:56px}
+  .curveitem .del{margin-left:auto;border:1px solid var(--signal);color:var(--signal);background:#fff;padding:2px 7px;font-size:10px;cursor:pointer;border-radius:2px}
+  .conf-ok{color:var(--accent)} .conf-lo{color:var(--signal)}
+  .railbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto;padding-top:10px;border-top:1px solid var(--grid)}
+  .railbtns button{flex:1;min-width:80px;font-size:10.5px;padding:7px 6px}
   .gtop{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1.5px solid var(--ink);flex-wrap:wrap}
   .gtop .tag{font-family:var(--mono);font-size:10.5px;background:var(--ink);color:#fff;padding:3px 7px}
   .gtop input[type=text]{flex:1;min-width:160px;font-weight:650;font-size:13.5px;border:none;border-bottom:1.5px dashed var(--line);padding:4px 2px;color:var(--ink);background:transparent}
@@ -317,45 +338,51 @@ function card(g, gi){
   el.innerHTML = `
     <div class="gtop"><span class="tag">${g.id} · p${g.page}</span>
       <input type="text" value="${escq(g.title)}" data-f="title" aria-label="Graph title"></div>
-    <div class="toolbar">
-      ${g.crop ? `<span class="ghostrow">ghost<input type="range" min="0" max="1" step="0.05" value="${state.ghost[gi] ?? 0}" data-ghost style="width:70px"></span>` : ''}
-      <button data-table class="${state.table[gi]?'on':''}">table</button>
-      <button data-csv>CSV</button><button data-xlsx>XLSX</button>
-      <span class="readout" data-readout>—</span>
-    </div>
-    <div class="gbody">${svgFor(g, gi, !!state.edit[gi])}</div>
-    <div class="hint">${state.edit[gi] ? 'drag points to edit · ' : ''}axes: ${g.x_axis.scale} / ${g.y_axis.scale}</div>
-    <div class="panel-toggle" data-panel>${state.panel[gi] ? '▾ hide axis & curve settings' : '▸ axis & curve settings'}</div>
-    <div class="settings ${state.panel[gi] ? '' : 'collapsed'}">
-    <div class="axes">
-      <label>x-axis label<input type="text" value="${escq(g.x_axis.label)}" data-f="xlabel"></label>
-      <label>y-axis label<input type="text" value="${escq(g.y_axis.label)}" data-f="ylabel"></label>
-      <label>x ticks (comma-separated)<input type="text" value="${(g.x_axis.ticks||[]).join(', ')}" data-f="xticks"></label>
-      <label>y ticks (comma-separated)<input type="text" value="${(g.y_axis.ticks||[]).join(', ')}" data-f="yticks"></label>
-    </div>
-    <div class="cctl">${g.curves.map((c,ci)=>`
-      <div class="crow">
-        <input type="color" value="${toHex(c.color)}" data-c="${ci}" aria-label="Curve color">
-        <input type="text" value="${escq(c.label)}" data-cl="${ci}" aria-label="Curve label">
-        <label title="line width">w<input type="range" min="1" max="6" step="0.2" value="${c.width||2.2}" data-w="${ci}"></label>
-        <label title="dashed"><input type="checkbox" ${c.linestyle==='dashed'?'checked':''} data-dash="${ci}">dash</label>
-        <label title="show/hide"><input type="checkbox" ${c.hidden?'':'checked'} data-vis="${ci}">show</label>
-        ${c.confidence!==undefined?`<span title="trace confidence" style="color:${c.confidence<0.6?'var(--signal)':'var(--ink-soft)'}">conf ${c.confidence}</span>`:''}
-        <button class="del" data-delc="${ci}">delete</button>
-        <button data-extl="${ci}" title="extend to left axis using the slope of the first points">←ext</button>
-        <button data-extr="${ci}" title="extend to right axis">ext→</button>
-        <button data-split="${ci}" class="${state.mode[gi]==='split:'+ci?'on':''}" title="then click a point">split</button>
-      </div>`).join('')}
-    </div>
-    </div>
-    ${state.table[gi] ? pointTable(g, gi) : ''}
-    ${state.edit[gi] ? `<div class="tips">drag a point to move it · drag the line to shift the whole curve · double-click the line to add a point · alt-click a point to delete it</div>` : ''}
-    <div class="gact">
-      <button data-edit>${state.edit[gi] ? 'Done editing' : 'Edit chart'}</button>
-      <button data-undo ${(state.hist[gi]||[]).length ? '' : 'disabled'}>Undo</button>
-      <button data-reset>Reset</button>
-      <button data-svg>Download SVG</button>
-      <button data-json>Download this graph's JSON</button>
+    <div class="gmain">
+      <div class="gleft">
+        <div class="gbody">${svgFor(g, gi, !!state.edit[gi])}</div>
+        <div class="toolbar">
+          <button data-edit class="${state.edit[gi]?'on':''}">${state.edit[gi] ? '✓ Editing' : 'Edit points'}</button>
+          <button data-undo ${(state.hist[gi]||[]).length ? '' : 'disabled'}>Undo</button>
+          <button data-reset>Reset</button>
+          ${g.crop ? `<span class="ghostrow" title="fade the original chart behind your trace">ghost<input type="range" min="0" max="1" step="0.05" value="${state.ghost[gi] ?? 0}" data-ghost style="width:64px"></span>` : ''}
+          <span class="readout" data-readout>—</span>
+        </div>
+        ${state.edit[gi] ? `<div class="tips">drag a point to move it · drag the line to shift the whole curve · double-click the line to add a point · alt-click a point to delete it</div>` : ''}
+      </div>
+      <div class="grail">
+        <div class="railsec">
+          <h4>Axes</h4>
+          <div class="railrow">x<input type="text" value="${escq(g.x_axis.label)}" data-f="xlabel"></div>
+          <div class="railrow">y<input type="text" value="${escq(g.y_axis.label)}" data-f="ylabel"></div>
+          <div class="railrow" title="comma-separated tick values">x ticks<input type="text" value="${(g.x_axis.ticks||[]).join(', ')}" data-f="xticks"></div>
+          <div class="railrow" title="comma-separated tick values">y ticks<input type="text" value="${(g.y_axis.ticks||[]).join(', ')}" data-f="yticks"></div>
+        </div>
+        <div class="railsec">
+          <h4>Curves</h4>
+          ${g.curves.map((c,ci)=>`
+            <div class="curveitem">
+              <div class="top">
+                <input type="color" value="${toHex(c.color)}" data-c="${ci}" aria-label="Curve color">
+                <input type="text" value="${escq(c.label)}" data-cl="${ci}" aria-label="Curve label">
+                <button class="del" data-delc="${ci}">del</button>
+              </div>
+              <div class="opts">
+                <label title="line width">w<input type="range" min="1" max="6" step="0.2" value="${c.width||2.2}" data-w="${ci}"></label>
+                <label><input type="checkbox" ${c.linestyle==='dashed'?'checked':''} data-dash="${ci}">dash</label>
+                <label><input type="checkbox" ${c.hidden?'':'checked'} data-vis="${ci}">show</label>
+                ${c.confidence!==undefined?`<span class="${c.confidence<0.6?'conf-lo':'conf-ok'}" title="trace confidence">conf ${c.confidence}</span>`:''}
+              </div>
+            </div>`).join('')}
+        </div>
+        ${state.table[gi] ? `<div class="railsec"><h4>Data table</h4>${pointTable(g, gi)}</div>` : ''}
+        <div class="railbtns">
+          <button data-table class="${state.table[gi]?'on':''}">${state.table[gi]?'Hide table':'Data table'}</button>
+          <button data-csv>Export CSV</button>
+          <button data-svg>Export SVG</button>
+          <button data-json>Export JSON</button>
+        </div>
+      </div>
     </div>`;
   if (state.edit[gi]) el.classList.add('editing');
   el.querySelector('[data-f=title]').oninput = e => { g.title = e.target.value; redraw(el,g,gi); };
@@ -377,24 +404,13 @@ function card(g, gi){
     if (!confirm('Reset this graph to the originally extracted data?')) return;
     snapshot(gi); state.graphs[gi] = JSON.parse(JSON.stringify(state.orig[gi])); renderAll();
   };
-  const pt = el.querySelector('[data-panel]');
-  if (pt) pt.onclick = () => { state.panel[gi] = !state.panel[gi]; renderAll(); };
   el.querySelector('[data-edit]').onclick = () => { state.edit[gi] = !state.edit[gi]; renderAll(); };
   // toolbar
   const gh = el.querySelector('[data-ghost]');
   if (gh) gh.oninput = () => { state.ghost[gi] = parseFloat(gh.value); redraw(el,g,gi); };
   el.querySelector('[data-table]').onclick = () => { state.table[gi] = !state.table[gi]; renderAll(); };
   el.querySelector('[data-csv]').onclick = () => dlCsv(g);
-  el.querySelector('[data-xlsx]').onclick = () => dlXlsx(g);
   // curve ops
-  el.querySelectorAll('[data-extl]').forEach(b => b.onclick = () => extend(g, gi, +b.dataset.extl, 'left'));
-  el.querySelectorAll('[data-extr]').forEach(b => b.onclick = () => extend(g, gi, +b.dataset.extr, 'right'));
-  el.querySelectorAll('[data-split]').forEach(b => b.onclick = () => {
-    const ci = +b.dataset.split;
-    state.mode[gi] = state.mode[gi] === 'split:'+ci ? null : 'split:'+ci;
-    if (state.mode[gi]) { state.edit[gi] = true; }
-    renderAll();
-  });
   // point table cells
   el.querySelectorAll('[data-cell]').forEach(inp => inp.onchange = () => {
     const v = parseFloat(inp.value); if (isNaN(v)) { renderAll(); return; }
@@ -465,44 +481,6 @@ function pointTable(g, gi){
 }
 
 /* ================= curve operations ================= */
-function fitSlope(xs, ys, n, fromEnd){
-  const idx = fromEnd ? xs.map((_,i)=>i).slice(-n) : xs.map((_,i)=>i).slice(0, n);
-  const mx = idx.reduce((a,i)=>a+xs[i],0)/idx.length, my = idx.reduce((a,i)=>a+ys[i],0)/idx.length;
-  let num=0, den=0;
-  idx.forEach(i=>{ num += (xs[i]-mx)*(ys[i]-my); den += (xs[i]-mx)**2; });
-  return den === 0 ? 0 : num/den;
-}
-function extend(g, gi, ci, dir){
-  const c = g.curves[ci];
-  if (c.x.length < 2) return;
-  snapshot(gi);
-  const n = Math.min(5, c.x.length);
-  if (dir === 'left'){
-    const m = fitSlope(c.x, c.y, n, false);
-    const tx = Math.min(g.x_axis.min, g.x_axis.max);
-    const ty = c.y[0] + m*(tx - c.x[0]);
-    c.x.unshift(+tx.toPrecision(4)); c.y.unshift(+ty.toPrecision(4));
-  } else {
-    const m = fitSlope(c.x, c.y, n, true);
-    const tx = Math.max(g.x_axis.min, g.x_axis.max);
-    const last = c.x.length-1;
-    const ty = c.y[last] + m*(tx - c.x[last]);
-    c.x.push(+tx.toPrecision(4)); c.y.push(+ty.toPrecision(4));
-  }
-  renderAll();
-}
-function splitCurve(g, gi, ci, pi){
-  const c = g.curves[ci];
-  if (pi <= 0 || pi >= c.x.length-1) { alert('Pick an interior point to split at.'); return; }
-  snapshot(gi);
-  const nc = { ...JSON.parse(JSON.stringify(c)), label: c.label + ' (b)',
-               x: c.x.slice(pi), y: c.y.slice(pi) };
-  c.x = c.x.slice(0, pi+1); c.y = c.y.slice(0, pi+1); c.label = c.label + ' (a)';
-  g.curves.splice(ci+1, 0, nc);
-  state.mode[gi] = null;
-  renderAll();
-}
-
 /* ================= exports ================= */
 function graphCsv(g){
   const lines = ['curve,' + (g.x_axis.label||'x').replace(/,/g,';') + ',' + (g.y_axis.label||'y').replace(/,/g,';')];
@@ -510,24 +488,7 @@ function graphCsv(g){
   return lines.join('\n');
 }
 function dlCsv(g){ dlBlob(graphCsv(g), `${g.id}.csv`, 'text/csv'); }
-async function dlXlsx(g){
-  if (!window.XLSX){
-    await new Promise((res, rej) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      s.onload = res; s.onerror = () => rej(new Error('load fail')); document.head.appendChild(s);
-    }).catch(()=>{ alert('Could not load the XLSX library (offline?). Use CSV instead.'); });
-    if (!window.XLSX) return;
-  }
-  const wb = XLSX.utils.book_new();
-  g.curves.forEach(c => {
-    const aoa = [[g.x_axis.label||'x', g.y_axis.label||'y']].concat(c.x.map((x,i)=>[x, c.y[i]]));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), c.label.slice(0,28).replace(/[\\\/\?\*\[\]:]/g,'_') || 'curve');
-  });
-  XLSX.writeFile(wb, `${g.id}.xlsx`);
-}
-
-/* ================= chart editing (live) ================= */
+async /* ================= chart editing (live) ================= */
 function attachDrag(el, g, gi){
   const svg = el.querySelector('svg.plot');
   if (!svg) return;
@@ -541,15 +502,6 @@ function attachDrag(el, g, gi){
     if (p.x < M.l || p.x > PW-M.r || p.y < M.t || p.y > PH-M.b) { readout.textContent = '—'; return; }
     readout.textContent = `x ${fmt(sxr.from(p.x))}   y ${fmt(syr.from(p.y))}`;
   });
-  // split mode: click a point to split there
-  if ((state.mode[gi]||'').startsWith('split:')){
-    const ci = +state.mode[gi].split(':')[1];
-    svg.addEventListener('click', ev => {
-      const pt = ev.target.closest('circle.pt'); if (!pt) return;
-      if (+pt.dataset.ci !== ci) { alert('Click a point on the curve you chose to split.'); return; }
-      splitCurve(g, gi, ci, +pt.dataset.pi);
-    });
-  }
   if (!state.edit[gi]) return;
   const sx = mkScale(g.x_axis, M.l, PW-M.r), sy = mkScale(g.y_axis, PH-M.b, M.t);
   const xlo = Math.min(g.x_axis.min,g.x_axis.max), xhi = Math.max(g.x_axis.min,g.x_axis.max);
