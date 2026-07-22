@@ -212,21 +212,70 @@ def _expand(v, p, w0=1.0):
         if v >= 100: out.append((v/100.0, p, w0*0.25))
     return out
 
+def _majority_grid(positions, ocr_by_idx, min_frac=0.55):
+    """Reconstruct tick values for evenly-spaced gridlines by majority vote.
+    Only fires when gridlines are uniform AND >= min_frac of readings agree on
+    one (v0, step) line, so a few OCR errors can't derail it. Returns list|None."""
+    n = len(positions)
+    if n < 4:
+        return None
+    pos = np.array(positions, float)
+    gaps = np.diff(pos)
+    if gaps.min() <= 0 or gaps.std() / gaps.mean() > 0.12:
+        return None  # not a clean uniform grid (likely log or irregular)
+    items = [(i, v) for i, v in ocr_by_idx.items() if v is not None and 0 <= v < 1e4]
+    if len(items) < 3:
+        return None
+    best = None
+    for a in range(len(items)):
+        for b in range(a + 1, len(items)):
+            ia, va = items[a]; ib, vb = items[b]
+            if ib == ia:
+                continue
+            step = (vb - va) / (ib - ia)
+            if step <= 0:
+                continue
+            v0 = va - ia * step
+            tol = max(abs(step) * 0.10, 0.3)
+            hits = [i for i, v in items if abs((v0 + i * step) - v) <= tol]
+            # bonus for nice step and v0 near a round number
+            nice = any(abs(step - c) < c * 0.03 for c in (0.1,0.2,0.25,0.5,1,2,2.5,5,10,20,25,50,100))
+            score = len(hits) + (0.5 if nice else 0)
+            if best is None or score > best[0]:
+                best = (score, v0, step, hits)
+    if best is None:
+        return None
+    _, v0, step, hits = best
+    if len(hits) < max(3, int(n * min_frac)):
+        return None  # not enough agreement -> don't trust it
+    # snap step + v0 to nice values
+    for c in (0.1,0.2,0.25,0.5,1,2,2.5,5,10,20,25,50,100):
+        if abs(step - c) < c * 0.05:
+            step = c; break
+    v0 = round(v0 / step) * step if step >= 1 else round(v0, 4)
+    return [round(v0 + i * step, 6) for i in range(n)]
+
+
 def calibrate_grid(img, box):
     x, y, w, h = box
     H, W = img.shape[:2]
     gx, gy = _gridline_positions(img, box)
     xpairs, ypairs = [], []
-    for px_rel in gx:
+    x_ocr_by_idx, y_ocr_by_idx = {}, {}
+    for i, px_rel in enumerate(gx):
         cx0 = x + px_rel
         crop = img[y+h+4:min(y+h+52, H), max(cx0-45,0):min(cx0+45, W)]
         v = _ocr_single(crop)
-        if v is not None: xpairs += _expand(v, float(px_rel), 1.2)
-    for py_rel in gy:
+        if v is not None:
+            x_ocr_by_idx[i] = v
+            xpairs += _expand(v, float(px_rel), 1.2)
+    for i, py_rel in enumerate(gy):
         cy0 = y + py_rel
         crop = img[max(cy0-22,0):min(cy0+22, H), max(x-120,0):x-4]
         v = _ocr_single(crop)
-        if v is not None: ypairs += _expand(v, float(py_rel), 1.2)
+        if v is not None:
+            y_ocr_by_idx[i] = v
+            ypairs += _expand(v, float(py_rel), 1.2)
     # merge strip-based OCR (better decimals) into the same pools, box-relative px
     xs = img[y+h+3:min(y+h+58, H), max(x-45,0):min(x+w+45, W)]
     for v, cx0, cy0 in _ocr_numbers(xs):
