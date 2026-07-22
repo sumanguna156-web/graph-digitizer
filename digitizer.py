@@ -256,6 +256,96 @@ def _majority_grid(positions, ocr_by_idx, min_frac=0.55):
     return [round(v0 + i * step, 6) for i in range(n)]
 
 
+
+def _detect_log_axis(profile_positions, plot_size, readable_label=None, readable_pos=None):
+    """Detect an evenly-spaced set of decade boundaries on a log axis.
+    profile_positions: minor gridline pixel positions (relative to plot box).
+    Returns dict{scale:'log', ticks, min, max, px2val} or None.
+    A log axis shows minor lines crowding toward each decade; the DECADE lines
+    are evenly spaced in pixels. We find that even spacing, then anchor the
+    absolute decade values using a readable label if available (else assume the
+    axis ends at a power of 10 nearest the frame)."""
+    p = np.array(sorted(set(profile_positions)), float)
+    if len(p) < 8:
+        return None
+    gaps = np.diff(p)
+    med = np.median(gaps)
+    # candidate decade lines: those preceded/followed by a large gap, plus ends
+    cand = {float(p[0]), float(p[-1])}
+    for i, gp in enumerate(gaps):
+        if gp > med * 2.2:
+            cand.add(float(p[i])); cand.add(float(p[i+1]))
+    cand = sorted(cand)
+    # find best even-spaced decade grid (step = pixels per decade)
+    best = None
+    for a in range(len(cand)):
+        for b in range(a+1, len(cand)):
+            step = cand[b] - cand[a]
+            if step < plot_size * 0.18:   # a decade must be reasonably wide
+                continue
+            start = cand[a] - step * round(cand[a] / step)
+            grid = [start + k*step for k in range(int(plot_size/step)+2)
+                    if -2 <= start + k*step <= plot_size + 2]
+            if len(grid) < 2:
+                continue
+            hits = sum(1 for c in cand if min(abs(c-gp) for gp in grid) < step*0.15)
+            score = hits - 0.01*len(grid)
+            if best is None or score > best[0]:
+                best = (score, grid, step)
+    if best is None:
+        return None
+    _, grid, step = best
+    grid = sorted(round(g) for g in grid if -2 <= g <= plot_size + 2)
+    n = len(grid)
+    if n < 2:
+        return None
+    # anchor absolute decade exponents. If we have a readable label at a position,
+    # snap it to nearest grid line and set that exponent; else assume rightmost
+    # decade is 10^0 = 1 (very common: axes end at 1) OR use magnitude of label.
+    exps = list(range(n))  # relative exponents 0..n-1 left->right
+    anchor_exp = None
+    if readable_label is not None and readable_pos is not None:
+        gi = min(range(n), key=lambda i: abs(grid[i]-readable_pos))
+        try:
+            import math
+            anchor_exp = round(math.log10(abs(readable_label))) if readable_label>0 else None
+            if anchor_exp is not None:
+                exps = [anchor_exp + (i-gi) for i in range(n)]
+        except Exception:
+            anchor_exp = None
+    if anchor_exp is None:
+        # assume last decade = 10^0 (axis ends at 1) -- matches most datasheets
+        exps = [i-(n-1) for i in range(n)]
+    ticks = [10.0**e for e in exps]
+    # linear map in log space: pixel = a*exp + b
+    gp = np.array(grid, float); ge = np.array(exps, float)
+    A = np.vstack([ge, np.ones_like(ge)]).T
+    (a, b), *_ = np.linalg.lstsq(A, gp, rcond=None)
+    if abs(a) < 1e-9:
+        return None
+    def px2val(px, A=a, B=b):
+        return 10.0 ** ((px - B) / A)
+    return {'scale': 'log', 'ticks': ticks, 'min': float(min(ticks)),
+            'max': float(max(ticks)), 'px2val': px2val}
+
+
+def _minor_gridlines(crop_gray, axis, frac=0.5):
+    """Positions of gridlines along an axis, sampled in a curve-sparse strip.
+    axis='x' -> vertical lines (use a horizontal strip); 'y' -> horizontal lines."""
+    from scipy.signal import find_peaks
+    h, w = crop_gray.shape
+    if axis == 'x':
+        strip = crop_gray[:max(int(h*0.3),10), :]
+        prof = (255 - strip).mean(axis=0)
+    else:
+        strip = crop_gray[:, :max(int(w*0.5),10)]
+        prof = (255 - strip).mean(axis=1)
+    if prof.max() <= 0:
+        return []
+    peaks, _ = find_peaks(prof, height=prof.max()*0.35, distance=5)
+    return sorted(peaks.tolist())
+
+
 def calibrate_grid(img, box):
     x, y, w, h = box
     H, W = img.shape[:2]
@@ -433,6 +523,13 @@ def digitize_page_img(img, boxes=None):
                 f = sx['px2val']; cx = {**sx, 'px2val': (lambda p, F=f, X=x0: F(p + X))}
             if cy is None and sy is not None:
                 f = sy['px2val']; cy = {**sy, 'px2val': (lambda p, F=f, Y=y0: F(p + Y))}
+        if not cx or not cy:
+            bx, by, bw, bh = box
+            cg = cv2.cvtColor(img[by:by+bh, bx:bx+bw], cv2.COLOR_BGR2GRAY)
+            if not cx:
+                cx = _detect_log_axis(_minor_gridlines(cg, 'x'), bw)
+            if not cy:
+                cy = _detect_log_axis(_minor_gridlines(cg, 'y'), bh)
         if not cx or not cy:
             out.append({'box': [int(v) for v in box], 'error': 'axis calibration failed'}); continue
         x, y, w, h = box
