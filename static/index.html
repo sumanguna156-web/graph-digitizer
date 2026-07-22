@@ -167,7 +167,7 @@
 let pdfFile = null, pdfName = '', accessCode = '';
 let authRequired = false;
 fetch('/api/health').then(r=>r.json()).then(d=>{authRequired = !!d.auth;}).catch(()=>{});
-const state = { graphs: [], edit: {}, hist: {}, orig: {}, view: {}, ghost: {}, table: {}, mode: {}, panel: {}, uid: null };
+const state = { graphs: [], edit: {}, hist: {}, orig: {}, view: {}, ghost: {}, table: {}, mode: {}, panel: {}, active: {}, uid: null };
 const $ = id => document.getElementById(id);
 
 /* ================= upload ================= */
@@ -377,6 +377,7 @@ function card(g, gi){
                 ${c.confidence!==undefined?`<span class="${c.confidence<0.6?'conf-lo':'conf-ok'}" title="trace confidence">conf ${c.confidence}</span>`:''}
               </div>
             </div>`).join('')}
+          <button data-addcurve style="margin-top:4px;font-size:10.5px;padding:6px;border:1px dashed var(--accent-ink);color:var(--accent-ink);background:#fff;cursor:pointer;border-radius:2px">+ Add curve (then double-click on chart to place points)</button>
         </div>
         ${state.table[gi] ? `<div class="railsec"><h4>Data table</h4>${pointTable(g, gi)}</div>` : ''}
         <div class="railbtns">
@@ -396,7 +397,7 @@ function card(g, gi){
   const ysc = el.querySelector('[data-f=yscale]'); if(ysc) ysc.onchange = e => { g.y_axis.scale = e.target.value; redraw(el,g,gi); };
   el.querySelector('[data-f=yticks]').onchange = e => { g.y_axis.ticks = parseTicks(e.target.value); const t=g.y_axis.ticks; if(t&&t.length){g.y_axis.min=Math.min(...t);g.y_axis.max=Math.max(...t);} redraw(el,g,gi); };
   el.querySelectorAll('[data-c]').forEach(inp => inp.oninput = () => { g.curves[+inp.dataset.c].color = inp.value; redraw(el,g,gi); });
-  el.querySelectorAll('[data-cl]').forEach(inp => inp.oninput = () => { g.curves[+inp.dataset.cl].label = inp.value; });
+  el.querySelectorAll('[data-cl]').forEach(inp => { inp.oninput = () => { g.curves[+inp.dataset.cl].label = inp.value; }; inp.onfocus = () => { state.active[gi] = +inp.dataset.cl; }; });
   el.querySelectorAll('[data-w]').forEach(inp => inp.oninput = () => { g.curves[+inp.dataset.w].width = parseFloat(inp.value); redraw(el,g,gi); });
   el.querySelectorAll('[data-dash]').forEach(inp => inp.onchange = () => { g.curves[+inp.dataset.dash].linestyle = inp.checked ? 'dashed' : 'solid'; redraw(el,g,gi); });
   el.querySelectorAll('[data-vis]').forEach(inp => inp.onchange = () => { g.curves[+inp.dataset.vis].hidden = !inp.checked; redraw(el,g,gi); });
@@ -408,6 +409,20 @@ function card(g, gi){
   el.querySelector('[data-reset]').onclick = () => {
     if (!confirm('Reset this graph to the originally extracted data?')) return;
     snapshot(gi); state.graphs[gi] = JSON.parse(JSON.stringify(state.orig[gi])); renderAll();
+  };
+  const addc = el.querySelector('[data-addcurve]');
+  if (addc) addc.onclick = () => {
+    snapshot(gi);
+    const palette = ['#2E74B5','#C00000','#8CBF3F','#7B5EA7','#ED7D31','#31859C','#16324F'];
+    const color = palette[g.curves.length % palette.length];
+    // seed with two points at the left edge so the curve exists and is draggable
+    const x0 = Math.min(g.x_axis.min, g.x_axis.max), x1 = Math.max(g.x_axis.min, g.x_axis.max);
+    const ymid = (Math.min(g.y_axis.min,g.y_axis.max)+Math.max(g.y_axis.min,g.y_axis.max))/2;
+    g.curves.push({ label: 'new curve '+(g.curves.length+1), color, linestyle:'solid',
+                    x: [x0, x1], y: [ymid, ymid] });
+    state.active[gi] = g.curves.length - 1;
+    state.edit[gi] = true;
+    renderAll();
   };
   el.querySelector('[data-edit]').onclick = () => { state.edit[gi] = !state.edit[gi]; renderAll(); };
   // toolbar
@@ -573,10 +588,18 @@ function attachDrag(el, g, gi){
   svg.addEventListener('pointerup', stop);
   svg.addEventListener('pointercancel', stop);
 
-  svg.addEventListener('dblclick', ev => {     // add a point on the line
-    const ln = ev.target.closest('polyline.hit'); if (!ln) return;
-    const ci = +ln.dataset.ci, c = g.curves[ci];
+  svg.addEventListener('dblclick', ev => {     // add a point
+    // prefer the line double-clicked on; else fall back to the ACTIVE curve
+    // (last one added/edited) so you can trace a new curve on empty canvas
+    const ln = ev.target.closest('polyline.hit');
+    let ci;
+    if (ln) ci = +ln.dataset.ci;
+    else if (state.active && state.active[gi] !== undefined) ci = state.active[gi];
+    else ci = g.curves.length - 1;
+    if (ci < 0 || !g.curves[ci]) return;
+    const c = g.curves[ci];
     const p = toSvg(ev);
+    if (p.x < M.l || p.x > PW-M.r || p.y < M.t || p.y > PH-M.b) return;
     const nx = clamp(sx.from(clamp(p.x, M.l, PW-M.r)), xlo, xhi);
     const ny = clamp(sy.from(clamp(p.y, M.t, PH-M.b)), ylo, yhi);
     let at = c.x.findIndex(v => v > nx); if (at < 0) at = c.x.length;
