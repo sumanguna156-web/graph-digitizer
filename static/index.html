@@ -374,13 +374,14 @@ function card(g, gi){
                 <label title="line width">w<input type="range" min="1" max="6" step="0.2" value="${c.width||2.2}" data-w="${ci}"></label>
                 <label><input type="checkbox" ${c.linestyle==='dashed'?'checked':''} data-dash="${ci}">dash</label>
                 <label><input type="checkbox" ${c.hidden?'':'checked'} data-vis="${ci}">show</label>
-                ${c.confidence!==undefined?`<span class="${c.confidence<0.6?'conf-lo':'conf-ok'}" title="trace confidence">conf ${c.confidence}</span>`:''}
+                ${c.match!==undefined&&c.match!==null?`<span class="${c.match<90?'conf-lo':'conf-ok'}" title="how well this curve matches the original image">match ${c.match}%</span>`:(c.confidence!==undefined?`<span class="${c.confidence<0.6?'conf-lo':'conf-ok'}" title="trace confidence">conf ${c.confidence}</span>`:'')}
               </div>
             </div>`).join('')}
           <button data-addcurve style="margin-top:4px;font-size:10.5px;padding:6px;border:1px dashed var(--accent-ink);color:var(--accent-ink);background:#fff;cursor:pointer;border-radius:2px">+ Add curve (then double-click on chart to place points)</button>
         </div>
         ${state.table[gi] ? `<div class="railsec"><h4>Data table</h4>${pointTable(g, gi)}</div>` : ''}
         <div class="railbtns">
+          <button data-recheck title="re-measure each curve against the original image">Check accuracy</button>
           <button data-table class="${state.table[gi]?'on':''}">${state.table[gi]?'Hide table':'Data table'}</button>
           <button data-csv>Export CSV</button>
           <button data-svg>Export SVG</button>
@@ -415,11 +416,20 @@ function card(g, gi){
     snapshot(gi);
     const palette = ['#2E74B5','#C00000','#8CBF3F','#7B5EA7','#ED7D31','#31859C','#16324F'];
     const color = palette[g.curves.length % palette.length];
-    // seed with two points at the left edge so the curve exists and is draggable
-    const x0 = Math.min(g.x_axis.min, g.x_axis.max), x1 = Math.max(g.x_axis.min, g.x_axis.max);
-    const ymid = (Math.min(g.y_axis.min,g.y_axis.max)+Math.max(g.y_axis.min,g.y_axis.max))/2;
-    g.curves.push({ label: 'new curve '+(g.curves.length+1), color, linestyle:'solid',
-                    x: [x0, x1], y: [ymid, ymid] });
+    // seed two points comfortably INSIDE the plot so they're easy to grab.
+    // Use geometric midpoints on log axes, arithmetic on linear.
+    const xmin = Math.min(g.x_axis.min, g.x_axis.max), xmax = Math.max(g.x_axis.min, g.x_axis.max);
+    const ymin = Math.min(g.y_axis.min, g.y_axis.max), ymax = Math.max(g.y_axis.min, g.y_axis.max);
+    const lerp = (a, b, t, log) => log
+      ? Math.pow(10, Math.log10(a) + (Math.log10(b) - Math.log10(a)) * t)
+      : a + (b - a) * t;
+    const xlog = g.x_axis.scale === 'log' && xmin > 0;
+    const ylog = g.y_axis.scale === 'log' && ymin > 0;
+    const px1 = lerp(xmin, xmax, 0.25, xlog), px2 = lerp(xmin, xmax, 0.75, xlog);
+    const py = lerp(ymin, ymax, 0.5, ylog);
+    g.curves.push({ label: 'new curve ' + (g.curves.length + 1), color, linestyle: 'solid',
+                    x: [+px1.toPrecision(4), +px2.toPrecision(4)],
+                    y: [+py.toPrecision(4), +py.toPrecision(4)] });
     state.active[gi] = g.curves.length - 1;
     state.edit[gi] = true;
     renderAll();
@@ -445,6 +455,23 @@ function card(g, gi){
   });
   el.querySelector('[data-svg]').onclick = () => dlSvg(g, el);
   el.querySelector('[data-json]').onclick = () => dlBlob(JSON.stringify(g,null,2), `${g.id}.json`, 'application/json');
+  const rc = el.querySelector('[data-recheck]');
+  if (rc) rc.onclick = async () => {
+    if (!state.uid || !g.box) { alert('Accuracy check needs the original extraction. Re-run extraction first.'); return; }
+    rc.textContent = 'Checking…'; rc.disabled = true;
+    try {
+      const r = await fetch('/api/rescore?code=' + encodeURIComponent(accessCode), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ uid: state.uid, page: g.page, box: g.box,
+          x_axis: g.x_axis, y_axis: g.y_axis,
+          curves: g.curves.map(c=>({color:c.color, x:c.x, y:c.y})) })
+      });
+      const d = await r.json();
+      if (r.ok && d.match) { g.curves.forEach((c,i)=>{ c.match = d.match[i]; }); renderAll(); }
+      else alert(d.detail || 'Accuracy check failed.');
+    } catch(e){ alert('Accuracy check error: '+e.message); }
+    rc.textContent = 'Check accuracy'; rc.disabled = false;
+  };
   attachDrag(el, g, gi);
   return el;
 }
