@@ -188,6 +188,10 @@
 let pdfFile = null, pdfName = '', accessCode = '';
 let authRequired = false;
 fetch('/api/health').then(r=>r.json()).then(d=>{authRequired = !!d.auth;}).catch(()=>{});
+window.addEventListener('error', e => {
+  const s = document.getElementById('status');
+  if (s) s.innerHTML = '<span class="err">JS error: ' + (e.message||e.type) + ' @ ' + (e.lineno||'?') + '</span>';
+});
 const state = { graphs: [], edit: {}, hist: {}, orig: {}, view: {}, ghost: {}, table: {}, mode: {}, panel: {}, active: {}, uid: null };
 const $ = id => document.getElementById(id);
 
@@ -559,7 +563,7 @@ function graphCsv(g){
   return lines.join('\n');
 }
 function dlCsv(g){ dlBlob(graphCsv(g), `${g.id}.csv`, 'text/csv'); }
-async /* ================= chart editing (live) ================= */
+/* ================= chart editing (live) ================= */
 function attachDrag(el, g, gi){
   const svg = el.querySelector('svg.plot');
   if (!svg) return;
@@ -611,11 +615,12 @@ function attachDrag(el, g, gi){
       const p = toSvg(ev);
       drag = { kind:'line', ci:+ln.dataset.ci, lastX:p.x, lastY:p.y };
     } else return;
-    svg.setPointerCapture(ev.pointerId);
     ev.preventDefault();
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp, { once: true });
   });
 
-  svg.addEventListener('pointermove', ev => {
+  function onMove(ev){
     if (!drag) return;
     const p = toSvg(ev);
     const c = g.curves[drag.ci];
@@ -633,11 +638,12 @@ function attachDrag(el, g, gi){
       drag.lastX = p.x; drag.lastY = p.y;
     }
     repaintCurve(drag.ci);
-  });
+  }
 
-  const stop = () => { if (drag) { drag = null; renderAll(); } };
-  svg.addEventListener('pointerup', stop);
-  svg.addEventListener('pointercancel', stop);
+  function onUp(){
+    window.removeEventListener('pointermove', onMove);
+    if (drag) { drag = null; renderAll(); }
+  }
 
   svg.addEventListener('dblclick', ev => {     // add a point
     // prefer the line double-clicked on; else fall back to the ACTIVE curve
