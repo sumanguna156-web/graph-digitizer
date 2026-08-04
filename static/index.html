@@ -527,17 +527,8 @@ function minorTicks(ax){
         const v = m * Math.pow(10, k);
         if (v > lo && v < hi) out.push(v);
       }
-  } else {
-    const t = ticks(ax);
-    if (t.length >= 2) {
-      const gap = (t[1] - t[0]) / 5;
-      for (let i = 0; i < t.length - 1; i++)
-        for (let j = 1; j < 5; j++) {
-          const v = t[i] + gap * j;
-          if (v > lo && v < hi) out.push(v);
-        }
-    }
   }
+  // linear axes: datasheets draw gridlines at labeled ticks only — no minors
   return out;
 }
 
@@ -551,15 +542,15 @@ function svgFor(g, gi, edit, forExport){
   const gridOn = state.grid[gi] !== false;
   if (gridOn) {
     for (const t of minorTicks(g.x_axis)) { const x = sx.to(t);
-      s += `<line x1="${x}" y1="${M.t}" x2="${x}" y2="${PH-M.b}" stroke="#EDF2F7" stroke-width="0.6"/>`; }
+      s += `<line x1="${x}" y1="${M.t}" x2="${x}" y2="${PH-M.b}" stroke="#CBD5DE" stroke-width="0.7"/>`; }
     for (const t of minorTicks(g.y_axis)) { const y = sy.to(t);
-      s += `<line x1="${M.l}" y1="${y}" x2="${PW-M.r}" y2="${y}" stroke="#EDF2F7" stroke-width="0.6"/>`; }
+      s += `<line x1="${M.l}" y1="${y}" x2="${PW-M.r}" y2="${y}" stroke="#CBD5DE" stroke-width="0.7"/>`; }
   }
   for (const t of ticks(g.x_axis)) { const x = sx.to(t);
-    if (gridOn) s += `<line x1="${x}" y1="${M.t}" x2="${x}" y2="${PH-M.b}" stroke="#D7E0EA" stroke-width="1"/>`;
+    if (gridOn) s += `<line x1="${x}" y1="${M.t}" x2="${x}" y2="${PH-M.b}" stroke="#9FAEBC" stroke-width="1.1"/>`;
     s += `<text x="${x}" y="${PH-M.b+16}" font-size="11" fill="#16324F" text-anchor="middle">${fmt(t)}</text>`; }
   for (const t of ticks(g.y_axis)) { const y = sy.to(t);
-    if (gridOn) s += `<line x1="${M.l}" y1="${y}" x2="${PW-M.r}" y2="${y}" stroke="#D7E0EA" stroke-width="1"/>`;
+    if (gridOn) s += `<line x1="${M.l}" y1="${y}" x2="${PW-M.r}" y2="${y}" stroke="#9FAEBC" stroke-width="1.1"/>`;
     s += `<text x="${M.l-8}" y="${y+4}" font-size="11" fill="#16324F" text-anchor="end">${fmt(t)}</text>`; }
   s += `<rect x="${M.l}" y="${M.t}" width="${PW-M.l-M.r}" height="${PH-M.t-M.b}" fill="none" stroke="#16324F" stroke-width="1.5"/>`;
   g.curves.forEach((c, ci) => {
