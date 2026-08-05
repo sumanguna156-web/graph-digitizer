@@ -68,11 +68,12 @@ def semantics(img, box, curves):
     desc = [{"color": c["color"],
              "x_start": c["x"][0], "x_end": c["x"][-1],
              "y_start": c["y"][0], "y_end": c["y"][-1]} for c in curves]
-    prompt = f"""This image is one graph from a datasheet. Curves were already traced from pixels;
+    prompt = f"""This image is one region from a datasheet. Curves were already traced from pixels;
 their colors and endpoints are: {json.dumps(desc)}
 Respond ONLY with JSON, no markdown:
-{{"title":"...","x_label":"...","y_label":"...","annotations":["test conditions in the plot box"],
+{{"is_chart":true,"title":"...","x_label":"...","y_label":"...","annotations":["test conditions in the plot box"],
 "curves":[{{"color":"#the hex from the list","label":"legend/curve name from the image","linestyle":"solid|dashed"}}]}}
+Set "is_chart" to false if this region is a data TABLE, a pinout/package DIAGRAM, a block of TEXT, or a logo — true only if it is an X/Y plot with axes and plotted curves.
 Match each listed color to the correct curve name shown in the image (e.g. "VGS=6V", "CISS", "1ms").
 If two listed colors are the same physical curve band, give them the same label."""
     try:
@@ -182,12 +183,18 @@ def stream(uid: str, code: str = ""):
                                            "id": gid, "title": gid, "stage": "trace"})
                     idx += 1
                     if "error" in g or not g.get("curves"):
+                        # region didn't calibrate — ask the model if it's even a chart
+                        chk = semantics(img, g.get("box", box), []) or {}
+                        if chk.get("is_chart") is False:
+                            continue  # table/diagram/text — silently skip
                         yield sse("graph_error", {"id": gid, "page": pi, "title": gid,
                                                   "message": g.get("error", "no curves traced")})
                         continue
                     yield sse("progress", {"index": idx - 1, "total": len(inv),
                                            "id": gid, "title": gid, "stage": "verify"})
                     sem = semantics(img, g["box"], g["curves"]) or {}
+                    if sem.get("is_chart") is False:
+                        continue  # traced something, but the model says it's not a chart
                     label_by_color = {c.get("color"): c for c in sem.get("curves", [])}
                     curves = []
                     for ci, c in enumerate(g["curves"]):
