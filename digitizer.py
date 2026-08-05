@@ -26,12 +26,36 @@ def find_plot_boxes(img):
         dup = False
         for k in keep:
             kx,ky,kw,kh = k
-            t1 = max(int(30*scale),12); t2 = max(int(60*scale),24); t3 = max(int(40*scale),16)
+            t1 = max(int(30*scale),12); t2 = max(int(60*scale),24)
             if abs(x-kx)<t1 and abs(y-ky)<t1 and abs(w-kw)<t2 and abs(h-kh)<t2:
                 dup = True; break
-            if x>kx+t3 and y>ky+t3 and x+w<kx+kw-t3 and y+h<ky+kh-t3:
+            # containment by overlap area: if most of this box sits inside a kept
+            # (larger) box, it's a nested plot frame — drop it. Robust to uneven insets.
+            ox = max(0, min(x+w, kx+kw) - max(x, kx))
+            oy = max(0, min(y+h, ky+kh) - max(y, ky))
+            inter = ox * oy
+            if inter > 0.75 * (w*h):
                 dup = True; break
         if not dup: keep.append(b)
+    # Light filter: drop obvious non-plots (colored curves OR any gridline mesh
+    # keeps a box). Deliberately lenient — a real graph must never be hidden;
+    # table false-positives are handled in the UI as dismissable error cards.
+    plots = []
+    for b in keep:
+        x, y, w, h = b
+        crop = img[y:y+h, x:x+w]
+        if crop.size == 0:
+            continue
+        gg = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        dark = gg < 140
+        hlines = int((dark.mean(axis=1) > 0.5).sum())
+        vlines = int((dark.mean(axis=0) > 0.5).sum())
+        bb = crop[..., 0].astype(int); gr = crop[..., 1].astype(int); rd = crop[..., 2].astype(int)
+        colored = int(((abs(rd - bb) + abs(rd - gr) + abs(bb - gr)) > 60).sum())
+        # keep if it has gridlines in both directions at all, or any curve color
+        if (hlines >= 4 and vlines >= 4) or colored > 300:
+            plots.append(b)
+    keep = plots if plots else keep
     rb = max(img.shape[0]/10.0, 1)
     return sorted(keep, key=lambda b: (round(b[1]/rb), b[0]))  # reading order
 
