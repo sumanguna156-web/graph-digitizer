@@ -192,7 +192,7 @@ window.addEventListener('error', e => {
   const s = document.getElementById('status');
   if (s) s.innerHTML = '<span class="err">JS error: ' + (e.message||e.type) + ' @ ' + (e.lineno||'?') + '</span>';
 });
-const state = { graphs: [], edit: {}, hist: {}, orig: {}, view: {}, ghost: {}, table: {}, mode: {}, panel: {}, active: {}, grid: {}, uid: null };
+const state = { graphs: [], edit: {}, hist: {}, orig: {}, view: {}, ghost: {}, table: {}, mode: {}, panel: {}, active: {}, grid: {}, minors: {}, uid: null };
 const $ = id => document.getElementById(id);
 
 /* ================= upload ================= */
@@ -352,16 +352,32 @@ const fmt = v => Math.abs(v) >= 10000 || (Math.abs(v) < 0.01 && v !== 0) ? v.toE
 /* ================= render ================= */
 function renderAll(){
   const wrap = $('graphs'); wrap.innerHTML = '';
-  state.graphs.forEach((g, gi) => wrap.appendChild(card(g, gi)));
+  const failed = state.graphs.filter(g => g.error).length;
+  if (failed && !state.hideFailed) {
+    const bar = document.createElement('div');
+    bar.style.cssText = 'font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin:0 auto 14px;max-width:1120px;display:flex;gap:10px;align-items:center';
+    bar.innerHTML = `<span>${failed} region${failed>1?'s':''} weren't graphs (tables/diagrams) or couldn't be read.</span>`;
+    const b = document.createElement('button'); b.textContent = 'Hide these';
+    b.onclick = () => { state.hideFailed = true; renderAll(); };
+    bar.appendChild(wrap.parentNode ? b : b);
+    wrap.appendChild(bar);
+  }
+  state.graphs.forEach((g, gi) => {
+    if (g.error && state.hideFailed) return;
+    wrap.appendChild(card(g, gi));
+  });
   $('stickybar').style.display = state.graphs.some(g=>!g.error) ? 'flex' : 'none';
 }
 
 function card(g, gi){
   const el = document.createElement('div'); el.className = 'gcard';
   if (g.error) {
-    el.innerHTML = `<div class="gtop"><span class="tag">${g.id}</span><b style="flex:1">${esc(g.title)}</b></div>
-      <div class="gbody"><span class="err">Extraction failed: ${esc(g.error)}</span></div>
-      <div class="gact"><span class="hint">Re-run extraction to retry failed graphs.</span></div>`;
+    el.innerHTML = `<div class="gtop"><span class="tag">${g.id}</span><b style="flex:1">${esc(g.title)}</b>
+        <button data-dismiss title="remove this card">✕</button></div>
+      <div class="gbody"><span class="err">Not a graph, or axes couldn't be read.</span></div>
+      <div class="gact"><span class="hint">Datasheet tables and diagrams show here too — dismiss if not a plot, or use "Add graph from region" to trace it manually.</span></div>`;
+    const d = el.querySelector('[data-dismiss]');
+    if (d) d.onclick = () => { state.graphs.splice(gi, 1); renderAll(); };
     return el;
   }
   el.innerHTML = `
@@ -375,6 +391,7 @@ function card(g, gi){
           <button data-undo ${(state.hist[gi]||[]).length ? '' : 'disabled'}>Undo</button>
           <button data-reset>Reset</button>
           <label class="ghostrow" title="datasheet-style background grid">grid<input type="checkbox" data-gridtoggle ${state.grid[gi]!==false?'checked':''}></label>
+          <label class="ghostrow" title="add finer minor gridlines between labels">minors<input type="checkbox" data-minorstoggle ${state.minors[gi]?'checked':''}></label>
           ${g.crop ? `<span class="ghostrow" title="fade the original chart behind your trace">ghost<input type="range" min="0" max="1" step="0.05" value="${state.ghost[gi] ?? 0}" data-ghost style="width:64px"></span>` : ''}
           <span class="readout" data-readout>—</span>
         </div>
@@ -467,6 +484,8 @@ function card(g, gi){
   // toolbar
   const gt = el.querySelector('[data-gridtoggle]');
   if (gt) gt.onchange = () => { state.grid[gi] = gt.checked; redraw(el, g, gi); };
+  const mt = el.querySelector('[data-minorstoggle]');
+  if (mt) mt.onchange = () => { state.minors[gi] = mt.checked; redraw(el, g, gi); };
   const gh = el.querySelector('[data-ghost]');
   if (gh) gh.oninput = () => { state.ghost[gi] = parseFloat(gh.value); redraw(el,g,gi); };
   el.querySelector('[data-table]').onclick = () => { state.table[gi] = !state.table[gi]; renderAll(); };
@@ -527,18 +546,18 @@ function minorTicks(ax){
         const v = m * Math.pow(10, k);
         if (v > lo && v < hi) out.push(v);
       }
-  } else {
-    const t = ticks(ax);
-    if (t.length >= 2) {
-      const step = t[1] - t[0];
-      // choose a "nice" minor step: half the label step (2->1, 0.2->0.1)
-      const minor = step / 2;
-      for (let v = Math.ceil(lo/minor)*minor; v < hi; v += minor) {
-        // skip values that coincide with a label tick
-        if (t.some(tk => Math.abs(tk - v) < minor*0.01)) continue;
-        if (v > lo && v < hi) out.push(+v.toPrecision(6));
-      }
-    }
+  }
+  return out;  // linear: minors handled separately, opt-in per graph
+}
+
+function linearMinors(ax){
+  const lo = Math.min(ax.min,ax.max), hi = Math.max(ax.min,ax.max), out=[];
+  if (ax.scale==='log') return out;
+  const t = ticks(ax); if (t.length<2) return out;
+  const minor = (t[1]-t[0])/2;
+  for (let v=Math.ceil(lo/minor)*minor; v<hi; v+=minor){
+    if (t.some(tk=>Math.abs(tk-v)<minor*0.01)) continue;
+    if (v>lo&&v<hi) out.push(+v.toPrecision(6));
   }
   return out;
 }
@@ -552,10 +571,18 @@ function svgFor(g, gi, edit, forExport){
   if (go > 0 && g.crop) s += `<image x="${M.l}" y="${M.t}" width="${PW-M.l-M.r}" height="${PH-M.t-M.b}" opacity="${go}" preserveAspectRatio="none" pointer-events="none" href="data:image/png;base64,${g.crop}"/>`;
   const gridOn = state.grid[gi] !== false;
   if (gridOn) {
+    // log-axis minor decade lines (always, that's how log paper looks)
     for (const t of minorTicks(g.x_axis)) { const x = sx.to(t);
-      s += `<line x1="${x}" y1="${M.t}" x2="${x}" y2="${PH-M.b}" stroke="#9C9C9C" stroke-width="0.8"/>`; }
+      s += `<line x1="${x}" y1="${M.t}" x2="${x}" y2="${PH-M.b}" stroke="#C4C4C4" stroke-width="0.6"/>`; }
     for (const t of minorTicks(g.y_axis)) { const y = sy.to(t);
-      s += `<line x1="${M.l}" y1="${y}" x2="${PW-M.r}" y2="${y}" stroke="#9C9C9C" stroke-width="0.8"/>`; }
+      s += `<line x1="${M.l}" y1="${y}" x2="${PW-M.r}" y2="${y}" stroke="#C4C4C4" stroke-width="0.6"/>`; }
+    // optional linear minors (opt-in per graph, for sheets like the Id-Vds one)
+    if (state.minors[gi]) {
+      for (const t of linearMinors(g.x_axis)) { const x = sx.to(t);
+        s += `<line x1="${x}" y1="${M.t}" x2="${x}" y2="${PH-M.b}" stroke="#C4C4C4" stroke-width="0.6"/>`; }
+      for (const t of linearMinors(g.y_axis)) { const y = sy.to(t);
+        s += `<line x1="${M.l}" y1="${y}" x2="${PW-M.r}" y2="${y}" stroke="#C4C4C4" stroke-width="0.6"/>`; }
+    }
   }
   for (const t of ticks(g.x_axis)) { const x = sx.to(t);
     if (gridOn) s += `<line x1="${x}" y1="${M.t}" x2="${x}" y2="${PH-M.b}" stroke="#9C9C9C" stroke-width="0.8"/>`;
