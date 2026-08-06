@@ -98,7 +98,7 @@
   .tips{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);padding:8px 4px 0;line-height:1.6}
   svg.plot{touch-action:none;display:block;width:100%;height:auto}
   svg.plot circle.pt{cursor:grab}
-  .editing svg.plot polyline{cursor:move}
+  .editing svg.plot path.hit{cursor:move}
 
   .ptable{max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:2px}
   .ptable table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11px}
@@ -192,7 +192,7 @@ window.addEventListener('error', e => {
   const s = document.getElementById('status');
   if (s) s.innerHTML = '<span class="err">JS error: ' + (e.message||e.type) + ' @ ' + (e.lineno||'?') + '</span>';
 });
-const state = { graphs: [], edit: {}, hist: {}, orig: {}, view: {}, ghost: {}, table: {}, mode: {}, panel: {}, active: {}, grid: {}, minors: {}, uid: null };
+const state = { graphs: [], edit: {}, hist: {}, orig: {}, view: {}, ghost: {}, table: {}, mode: {}, panel: {}, active: {}, grid: {}, minors: {}, tracing: {}, uid: null };
 const $ = id => document.getElementById(id);
 
 /* ================= upload ================= */
@@ -305,7 +305,7 @@ document.addEventListener('keydown', e => {
 });
 
 /* ================= scales & ticks ================= */
-const PW = 640, PH = 480, M = {l:70, r:20, t:16, b:52};
+const PW = 640, PH = 480, M = {l:70, r:20, t:34, b:52};
 function mkScale(ax, r0, r1){
   if (ax.scale === 'log') {
     // guard: log of 0/negative would NaN every coordinate and kill editing
@@ -385,7 +385,12 @@ function card(g, gi){
       <input type="text" value="${escq(g.title)}" data-f="title" aria-label="Graph title"></div>
     <div class="gmain">
       <div class="gleft">
-        <div class="gbody">${svgFor(g, gi, !!state.edit[gi])}</div>
+        ${state.tracing[gi]!==undefined ? `<div style="background:var(--accent);color:#fff;font-family:var(--mono);font-size:11px;padding:7px 10px;display:flex;align-items:center;gap:10px;border-radius:2px;margin-bottom:6px">
+        <span>✎ Tracing "${esc(g.curves[state.tracing[gi]]?.label||'')}" — click along the ghost line, left to right. ${(g.curves[state.tracing[gi]]?.x.length||0)} points.</span>
+        <button data-finishtrace style="margin-left:auto;background:#fff;color:var(--accent-ink);border:none;padding:4px 12px;border-radius:2px;font-weight:600;cursor:pointer">Finish</button>
+        <button data-undotrace style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5);padding:4px 8px;border-radius:2px;cursor:pointer">Undo last</button>
+      </div>` : ''}
+      <div class="gbody">${svgFor(g, gi, !!state.edit[gi])}</div>
         <div class="toolbar">
           <button data-edit class="${state.edit[gi]?'on':''}">${state.edit[gi] ? '✓ Editing' : 'Edit points'}</button>
           <button data-undo ${(state.hist[gi]||[]).length ? '' : 'disabled'}>Undo</button>
@@ -423,7 +428,8 @@ function card(g, gi){
                 ${c.match!==undefined&&c.match!==null?`<span class="${c.match<90?'conf-lo':'conf-ok'}" title="how well this curve matches the original image">match ${c.match}%</span>`:(c.confidence!==undefined?`<span class="${c.confidence<0.6?'conf-lo':'conf-ok'}" title="trace confidence">conf ${c.confidence}</span>`:'')}
               </div>
             </div>`).join('')}
-          <button data-addcurve style="margin-top:4px;font-size:10.5px;padding:6px;border:1px dashed var(--accent-ink);color:var(--accent-ink);background:#fff;cursor:pointer;border-radius:2px">+ Add curve (then double-click on chart to place points)</button>
+          <button data-tracecurve style="margin-top:4px;font-size:10.5px;padding:7px;border:1px solid var(--accent-ink);background:var(--accent);color:#fff;cursor:pointer;border-radius:2px;font-weight:600">✎ Trace a curve (click along the ghost line)</button>
+          <button data-addcurve style="margin-top:4px;font-size:10.5px;padding:6px;border:1px dashed var(--accent-ink);color:var(--accent-ink);background:#fff;cursor:pointer;border-radius:2px">+ Add curve (drag/double-click to place points)</button>
         </div>
         ${state.table[gi] ? `<div class="railsec"><h4>Data table</h4>${pointTable(g, gi)}</div>` : ''}
         <div class="railbtns">
@@ -456,6 +462,30 @@ function card(g, gi){
   el.querySelector('[data-reset]').onclick = () => {
     if (!confirm('Reset this graph to the originally extracted data?')) return;
     snapshot(gi); state.graphs[gi] = JSON.parse(JSON.stringify(state.orig[gi])); renderAll();
+  };
+  const tracec = el.querySelector('[data-tracecurve]');
+  if (tracec) tracec.onclick = () => {
+    snapshot(gi);
+    const palette = ['#2E74B5','#C00000','#8CBF3F','#7B5EA7','#ED7D31','#31859C','#16324F'];
+    const color = palette[g.curves.length % palette.length];
+    g.curves.push({ label: 'traced ' + (g.curves.length + 1), color, linestyle: 'solid', x: [], y: [] });
+    state.active[gi] = g.curves.length - 1;
+    state.edit[gi] = true;
+    state.tracing[gi] = g.curves.length - 1;   // enter trace mode for this curve
+    // auto-raise ghost so the user can see what they're tracing
+    if ((state.ghost[gi] ?? 0) < 0.3) state.ghost[gi] = 0.6;
+    renderAll();
+  };
+  const fin = el.querySelector('[data-finishtrace]');
+  if (fin) fin.onclick = () => {
+    const ci = state.tracing[gi];
+    if (g.curves[ci] && g.curves[ci].x.length < 2) { alert('Add at least 2 points, or delete this curve.'); return; }
+    delete state.tracing[gi]; renderAll();
+  };
+  const undt = el.querySelector('[data-undotrace]');
+  if (undt) undt.onclick = () => {
+    const c = g.curves[state.tracing[gi]];
+    if (c && c.x.length) { c.x.pop(); c.y.pop(); renderAll(); }
   };
   const addc = el.querySelector('[data-addcurve]');
   if (addc) addc.onclick = () => {
@@ -562,6 +592,20 @@ function linearMinors(ax){
   return out;
 }
 
+function splinePath(pts){
+  // Smooth Catmull-Rom spline through all points, as an SVG path. Passes exactly
+  // through every point (so the data is faithful) but curves smoothly between them.
+  if (pts.length < 3) return 'M' + pts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' L');
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++){
+    const p0 = pts[i-1] || pts[i], p1 = pts[i], p2 = pts[i+1], p3 = pts[i+2] || pts[i+1];
+    const c1x = p1[0] + (p2[0]-p0[0])/6, c1y = p1[1] + (p2[1]-p0[1])/6;
+    const c2x = p2[0] - (p3[0]-p1[0])/6, c2y = p2[1] - (p3[1]-p1[1])/6;
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
 function svgFor(g, gi, edit, forExport){
   const sx = mkScale(g.x_axis, M.l, PW-M.r), sy = mkScale(g.y_axis, PH-M.b, M.t);
   const v = {x:0,y:0,w:PW,h:PH};
@@ -595,12 +639,26 @@ function svgFor(g, gi, edit, forExport){
     if (c.hidden) return;
     const pts = c.x.map((x,i)=>[sx.to(x), sy.to(c.y[i])]);
     const dash = c.linestyle === 'dashed' ? ` stroke-dasharray="${(c.width||2.2)*3} ${(c.width||2.2)*2}"` : '';
-    if (edit) s += `<polyline class="hit" data-ci="${ci}" points="${pts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="transparent" stroke-width="14"/>`;
-    s += `<polyline class="ln" data-ci="${ci}" points="${pts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="${toHex(c.color)}" stroke-width="${c.width||2.6}" stroke-linejoin="round" stroke-linecap="round"${dash}/>`;
+    const pathD = (c.smooth === false)
+      ? 'M' + pts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' L')
+      : splinePath(pts);
+    if (edit) s += `<path class="hit" data-ci="${ci}" d="${pathD}" fill="none" stroke="transparent" stroke-width="14" pointer-events="stroke"/>`;
+    s += `<path class="ln" data-ci="${ci}" d="${pathD}" fill="none" stroke="${toHex(c.color)}" stroke-width="${c.width||2.6}" stroke-linejoin="round" stroke-linecap="round"${dash}/>`;
     if (edit) pts.forEach((p,pi)=>{ s += `<circle class="pt" data-ci="${ci}" data-pi="${pi}" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4" fill="#ffffff" stroke="${toHex(c.color)}" stroke-width="1.6"/>`; });
   });
   s += `<text x="${(M.l+PW-M.r)/2}" y="${PH-10}" font-size="13" fill="#16324F" text-anchor="middle">${esc(g.x_axis.label)}</text>`;
   s += `<text x="16" y="${(M.t+PH-M.b)/2}" font-size="13" fill="#16324F" text-anchor="middle" transform="rotate(-90 16 ${(M.t+PH-M.b)/2})">${esc(g.y_axis.label)}</text>`;
+  // drawn title + legend: export only (on-screen the title is in the card header)
+  if (forExport) {
+    s += `<text x="${(M.l+PW-M.r)/2}" y="${M.t-10}" font-size="14" font-weight="bold" fill="#16324F" text-anchor="middle">${esc(g.title)}</text>`;
+    let ly = M.t + 16;
+    g.curves.forEach(c => {
+      if (c.hidden) return;
+      s += `<line x1="${M.l+12}" y1="${ly-4}" x2="${M.l+30}" y2="${ly-4}" stroke="${toHex(c.color)}" stroke-width="${c.width||2.6}"/>`;
+      s += `<text x="${M.l+35}" y="${ly}" font-size="11" fill="#16324F">${esc(c.label)}</text>`;
+      ly += 16;
+    });
+  }
   s += `<title>${esc(g.title)}</title></svg>`;
   return s;
 }
@@ -644,6 +702,24 @@ function attachDrag(el, g, gi){
   if (!state.edit[gi]) return;
   const sx = mkScale(g.x_axis, M.l, PW-M.r), sy = mkScale(g.y_axis, PH-M.b, M.t);
   const xlo = Math.min(g.x_axis.min,g.x_axis.max), xhi = Math.max(g.x_axis.min,g.x_axis.max);
+  // ---- guided trace mode: single clicks append points to the active curve ----
+  if (state.tracing[gi] !== undefined) {
+    const ci = state.tracing[gi];
+    svg.style.cursor = 'crosshair';
+    svg.addEventListener('click', ev => {
+      if (ev.target.closest('circle.pt')) return;   // let point-drag win
+      const p = toPt(ev);
+      if (p.x < M.l || p.x > PW-M.r || p.y < M.t || p.y > PH-M.b) return;
+      const nx = sxr.from(p.x), ny = syr.from(p.y);
+      const c = g.curves[ci]; if (!c) return;
+      snapshot(gi);
+      // keep points sorted by x so the polyline stays clean
+      let at = c.x.findIndex(v => v > nx); if (at < 0) at = c.x.length;
+      c.x.splice(at, 0, +nx.toPrecision(4)); c.y.splice(at, 0, +ny.toPrecision(4));
+      renderAll();
+    });
+    return;  // trace mode owns clicks; drag/dblclick disabled while tracing
+  }
   const ylo = Math.min(g.y_axis.min,g.y_axis.max), yhi = Math.max(g.y_axis.min,g.y_axis.max);
   const toSvg = ev => { const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY;
                         return p.matrixTransform(svg.getScreenCTM().inverse()); };
@@ -652,8 +728,10 @@ function attachDrag(el, g, gi){
   function repaintCurve(ci){
     const c = g.curves[ci];
     const pts = c.x.map((x,i)=>[sx.to(x), sy.to(c.y[i])]);
-    const str = pts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ');
-    svg.querySelectorAll(`polyline[data-ci="${ci}"]`).forEach(pl => pl.setAttribute('points', str));
+    const d = (c.smooth === false)
+      ? 'M' + pts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' L')
+      : splinePath(pts);
+    svg.querySelectorAll(`path[data-ci="${ci}"]`).forEach(pl => pl.setAttribute('d', d));
     svg.querySelectorAll(`circle.pt[data-ci="${ci}"]`).forEach(cir => {
       const pi = +cir.dataset.pi;
       if (!pts[pi]) return;
@@ -663,7 +741,7 @@ function attachDrag(el, g, gi){
 
   svg.addEventListener('pointerdown', ev => {
     const pt = ev.target.closest('circle.pt');
-    const ln = ev.target.closest('polyline.hit');
+    const ln = ev.target.closest('path.hit') || ev.target.closest('path.ln');
     if (pt) {
       const ci = +pt.dataset.ci, pi = +pt.dataset.pi;
       if (ev.altKey) {                        // alt-click: delete point
@@ -712,7 +790,7 @@ function attachDrag(el, g, gi){
   svg.addEventListener('dblclick', ev => {     // add a point
     // prefer the line double-clicked on; else fall back to the ACTIVE curve
     // (last one added/edited) so you can trace a new curve on empty canvas
-    const ln = ev.target.closest('polyline.hit');
+    const ln = ev.target.closest('path.hit') || ev.target.closest('path.ln');
     let ci;
     if (ln) ci = +ln.dataset.ci;
     else if (state.active && state.active[gi] !== undefined) ci = state.active[gi];
